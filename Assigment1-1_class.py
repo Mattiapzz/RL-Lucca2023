@@ -7,12 +7,22 @@ Authors
  - Sebastiano Taddei.
 
 '''
-import math
+
 import numpy as np
 import matplotlib.pyplot as plt
 
 MAX_ITER = 10000 # maximum number of iterations (best results with 1000000)
 NUM_DASHES = 20
+
+
+# class for Markov Decision Process
+class MDP:
+    '''
+    Class for Markov Decision Process.
+    '''
+
+    def __init__(self, state_transition_matrix, reward_function, gamma):
+        
 
 
 def state_transition_matrix_P1():
@@ -44,20 +54,6 @@ def state_transition_matrix_P2():
     P2[19,0] = 1
 
     return P2
-
-def action_set(state):
-    '''
-
-    Action set.
-
-    '''
-    actions = [1]
-    if state < 20:
-        actions.append(2)
-    if state == 5 or state == 10 or state == 15 or state == 20:
-        actions.append(3)
-
-    return actions
 
 def pi1(s):
     '''
@@ -102,15 +98,14 @@ def reward(s, a):
     else:
         return 0
     
-    
-
-def evolve_state(s, a):
+def evolve_state(s, policy):
     '''
 
     Evolve state according to policy.
 
     '''
 
+    a = policy(s)
     if a == 2:
         return s + 1
     elif a == 3:
@@ -129,7 +124,7 @@ def V_pi(state_0, gamma, policy):
     state = state_0
     for k in range(MAX_ITER):
         sum   = sum + gamma**k * reward(state, policy(state))
-        state = evolve_state(state, policy(state))
+        state = evolve_state(state, policy)
     return sum
 
 def Q_pi(state_0, action_0, gamma, policy):
@@ -143,10 +138,24 @@ def Q_pi(state_0, action_0, gamma, policy):
     action = action_0
     for k in range(MAX_ITER):
         sum    = sum + gamma**k * reward(state, action)
-        state  = evolve_state(state, policy(state))
+        state  = evolve_state(state, policy)
         action = policy(state)
     return sum
+    
+def PE(gamma,policy,reward,value_function,epsilon):
+    '''
 
+    Policy evaluation.
+
+    '''
+    V_plus = np.zeros(20)
+    V = np.array([value_function(i+1, gamma, policy) for i in range(20)])
+    while np.linalg.norm(V_plus - V) > epsilon:
+        V = V_plus
+        for i in range(20):
+            V_plus[i] = reward(i+1,policy(i+1)) + gamma * value_function(evolve_state(i+1,policy), gamma, policy)
+    V = V_plus
+    return V
 
 def PE_hyst(gamma,policy,reward,value_function,epsilon, max_iter):
     '''
@@ -160,58 +169,8 @@ def PE_hyst(gamma,policy,reward,value_function,epsilon, max_iter):
     for _ in range(max_iter):
         V[:] = V_plus[:]
         for i in range(20):
-            V_plus[i] = reward(i+1,policy(i+1)) + gamma * V[evolve_state(i+1,policy(i+1))-1] 
-        V_hyst.append(np.copy(V_plus))
-
-        if np.linalg.norm(V_plus - V) < epsilon:
-            break
-        
-    V = V_plus
-    
-    return V, V_hyst
-
-def VI_hyst(gamma,reward,epsilon, max_iter):
-    '''
-
-    Value iteration.
-
-    '''
-    V_hyst = []
-    V = np.zeros(20)
-    V_plus = np.zeros(20)
-    for _ in range(max_iter):
-    
-        V[:] = V_plus[:]
-        for i in range(20):
-            V_plus[i] = np.max([ reward(i+1,action) + gamma * V[evolve_state(i+1,action)-1] for action in action_set(i+1) ])
-        V_hyst.append(np.copy(V_plus))
-
-        if np.linalg.norm(V_plus - V) < epsilon:
-            break
-        
-    V = V_plus
-    
-    return V, V_hyst
-
-def PI_hyst(gamma,reward,epsilon, max_iter):
-    '''
-
-    Policy iteration.
-
-    '''
-    V_hyst = []
-    V = np.zeros(20)
-    V_plus = np.zeros(20)
-    pi_s = np.zeros(20)
-    for _ in range(max_iter):
-    
-        V[:] = V_plus[:]
-        for i in range(20):
-            index = np.argmax([ reward(i+1,action) + gamma * V[evolve_state(i+1,action)-1] for action in action_set(i+1) ])
-            pi_s[i] = action_set(i+1)[index]
-        for i in range(20):
-            V_plus[i] = reward(i+1,pi_s[i]) + gamma * V[evolve_state(i+1,pi_s[i])-1] 
-        V_hyst.append(np.copy(V_plus))
+            V_plus[i] = reward(i+1,policy(i+1)) + gamma * V[evolve_state(i+1,policy)-1] #value_function(evolve_state(i+1,policy), gamma, policy)
+        V_hyst.append(V_plus)
 
         if np.linalg.norm(V_plus - V) < epsilon:
             break
@@ -303,101 +262,13 @@ def exercise_c(gammas):
         V_bell_P1 = np.linalg.inv( np.eye(20)-gamma*P1 ) @ reward_P1
         V_bell_P2 = np.linalg.inv( np.eye(20)-gamma*P2 ) @ reward_P2
 
-        V, V_hyst = PE_hyst(gamma, pi1, reward, V_pi, 1e-8, 50)
+        V, V_hyst = PE_hyst(gamma, pi1, reward, V_pi, 1e-18, 200)
 
         err_hyst = [np.linalg.norm(V_tmp - V_bell_P1) for V_tmp in V_hyst]
 
         plt.figure()
-        plt.title("Error PE policy $\pi_1$")
         plt.plot(err_hyst)
         plt.show()
-
-        plt.figure()
-        data = np.array(V_hyst).T
-        plt.imshow(data, interpolation="None")
-        plt.title("PE policy $\pi_1$")
-        plt.xlabel("iteration")
-        plt.ylabel("state")
-        plt.xlim(0, len(V_hyst))
-        plt.ylim(0, 20)
-        plt.colorbar()
-        plt.show()
-
-        V, V_hyst = PE_hyst(gamma, pi2, reward, V_pi, 1e-8, 50)
-
-        err_hyst = [np.linalg.norm(V_tmp - V_bell_P2) for V_tmp in V_hyst]
-
-        plt.figure()
-        plt.title("Error PE policy $\pi_2$")
-        plt.plot(err_hyst)
-        plt.show()
-
-        plt.figure()
-        data = np.array(V_hyst).T
-        plt.imshow(data, interpolation="None")
-        plt.title("PE policy $\pi_2$")
-        plt.xlabel("iteration")
-        plt.ylabel("state")
-        plt.xlim(0, len(V_hyst))
-        plt.ylim(0, 20)
-        plt.colorbar()
-        plt.show()
-
-
-
-def exercise_d(gammas):
-    '''
-    
-    exercise d.
-
-    '''
-    print("-"*NUM_DASHES)
-    print("exercise d")
-    for gamma in gammas:
-        print(f"gamma = {gamma}")
-
-        V, V_hyst = VI_hyst(gamma, reward, 1e-8, 50)
-        plt.figure()
-        data = np.array(V_hyst).T
-        plt.imshow(data, interpolation="None")
-        plt.title(f"Value Iteration $\gamma = {gamma}$ ")
-        plt.xlabel("iteration")
-        plt.ylabel("state")
-        plt.xlim(0, len(V_hyst))
-        plt.ylim(0, 20)
-        plt.colorbar()
-        plt.show()
-
-    
-    print("-"*NUM_DASHES)
-
-def exercise_e(gammas):
-    '''
-    
-    exercise e.
-
-    '''
-    print("-"*NUM_DASHES)
-    print("exercise e")
-    for gamma in gammas:
-        print(f"gamma = {gamma}")
-
-        V, V_hyst = PI_hyst(gamma, reward, 1e-8, 50)
-        plt.figure()
-        data = np.array(V_hyst).T
-        plt.imshow(data, interpolation="None")
-        plt.title(f"Policy Iteration $\gamma = {gamma}$ ")
-        plt.xlabel("iteration")
-        plt.ylabel("state")
-        plt.xlim(0, len(V_hyst))
-        plt.ylim(0, 20)
-        plt.colorbar()
-        plt.show()
-
-    
-    print("-"*NUM_DASHES)
-
-
             
 
 
@@ -410,9 +281,7 @@ def main():
     gammas = (0.5, 0.85, 0.9, 0.99, 1-1e-5) #, 1 -> omitted for singularity
     # exercise_a(gammas)
     # exercise_b(2,gammas)
-    # exercise_c(gammas)
-    exercise_d(gammas)
-    exercise_e(gammas)
+    exercise_c(gammas)
 
     
 if __name__ == "__main__":
